@@ -9,7 +9,7 @@
 /backend/certs/
 
 # Log files
-npm-debug.log*
+npm-debug.log*w
 yarn-debug.log*
 yarn-error.log*
 

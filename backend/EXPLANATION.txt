@@ -1,0 +1,164 @@
+Full Explanation for VibeCheck Backend and Frontend Changes
+
+1. Overview
+This project is a ToDo app with a backend built in Node.js and Express, and a frontend built with plain HTML, CSS, and JavaScript. The backend stores user data and tasks in MongoDB using Mongoose. Authentication is now implemented with secure JWT cookies and optional Google login.
+
+2. Main backend files and their roles
+- backend/app.js
+  - Creates the Express application.
+  - Connects to MongoDB using `connectDB()` from `config/db.js`.
+  - Uses CORS with `credentials: true` so browser requests can send cookies.
+  - Uses `express.json()` and `express.urlencoded()` to parse request bodies.
+  - Mounts `auth` and `tasks` routes under `/api/auth` and `/api/tasks`.
+  - Adds trust proxy support with `app.set("trust proxy", 1)` so cookies work behind a proxy in production.
+
+- backend/server.js
+  - Loads environment variables with `dotenv`.
+  - Starts the server on `process.env.PORT` or `5000`.
+
+- backend/config/db.js
+  - Connects to MongoDB through `process.env.MONGODB_URL`.
+  - If no Atlas URL is provided, it falls back to local MongoDB at `mongodb://127.0.0.1:27017/vibecheckDB`.
+  - This makes the app Atlas-ready but still easy to run locally.
+
+- backend/models/user.js
+  - Defines the user data schema.
+  - Fields: `name`, `email`, `password`, `googleId`.
+  - `password` is required only for users who do not sign in with Google.
+  - `googleId` is optional and becomes unique when a Google account is used.
+  - `select: false` means the password is not returned by default from queries.
+
+- backend/routes/auth.js
+  - Handles registration, login, logout, status checking, and Google login.
+  - Uses bcrypt to hash passwords and compare hashes safely.
+  - Uses `jsonwebtoken` to create a JWT token for the user.
+  - Stores the JWT in an `httpOnly` cookie so browser JavaScript cannot read it.
+  - Cookie options include `sameSite` and `secure` settings for modern browser security.
+
+- backend/routes/tasks.js
+  - Protects all task routes with the `protect` middleware.
+  - Creates tasks for the authenticated user.
+  - Reads tasks belonging only to the user in the current JWT cookie.
+  - Toggles completion and deletes tasks.
+
+- backend/middleware/auth.js
+  - Reads the cookie header and extracts the JWT.
+  - Verifies the JWT using `process.env.JWT_SECRET`.
+  - Finds the corresponding user in MongoDB.
+  - Attaches that user to `req.user` for task routes.
+  - Returns a 401 error if the token is missing or invalid.
+
+3. Authentication logic and data flow
+- Sign Up
+  - Frontend sends `POST /api/auth/register` with `name`, `email`, `password`.
+  - Backend checks if the email already exists.
+  - Password is hashed with bcrypt and the user is saved.
+  - A JWT is created and set in `token` cookie.
+  - The response returns `success: true` and user info.
+
+- Login
+  - Frontend sends `POST /api/auth/login` with `email`, `password`.
+  - Backend finds the user and compares the password hash.
+  - If valid, backend sets the `token` cookie.
+  - The response returns `success: true` and user info.
+
+- Logout
+  - Frontend sends `POST /api/auth/logout`.
+  - Backend clears the `token` cookie.
+  - The user is signed out on the browser side.
+
+- Status check
+  - Frontend sends `GET /api/auth/status` with `credentials: "include"`.
+  - Backend reads and validates the cookie.
+  - If valid, it returns `{ authenticated: true }` and user info.
+  - If not valid, it returns `{ authenticated: false }`.
+
+- Google login
+  - Frontend initializes Google Identity and renders a Google sign-in button.
+  - After user selects a Google account, the browser receives a Google ID token.
+  - Frontend sends that token to `POST /api/auth/google`.
+  - Backend verifies the Google ID token using `google-auth-library`.
+  - Backend finds or creates a user with the Google email and `googleId`.
+  - Backend issues the same JWT cookie and returns user data.
+
+4. Why cookies are used for JWT auth
+- The JWT is stored in an `httpOnly` cookie instead of localStorage.
+- `httpOnly` cookies cannot be read by JavaScript, which reduces the risk of token theft from XSS attacks.
+- Cookies are automatically sent with requests when `credentials: "include"` is used.
+- This makes auth state easier to manage across protected routes.
+
+5. Frontend changes and how they work
+- `script.js`
+  - Tracks login state with `isAuthenticated`.
+  - Uses `checkAuthStatus()` on page load to ask `/api/auth/status` whether the cookie is valid.
+  - Sends `credentials: "include"` on all protected API requests.
+  - Replaced old token header logic with cookie-based auth.
+  - Updates UI buttons based on auth state.
+  - Shows popup notifications instead of `alert()`.
+  - Includes Google login initialization and callback handling.
+
+- `index.html`
+  - Added a Google login button placeholder in the login modal.
+  - Added the Google Identity library script:
+    `https://accounts.google.com/gsi/client`.
+  - The login modal now supports both email/password login and Google login.
+
+6. Database and Atlas readiness
+- `backend/config/db.js` uses `process.env.MONGODB_URL`.
+- If you set `MONGODB_URL` to an Atlas connection string, the app connects to Atlas.
+- If you do not set it, the app connects to a local MongoDB instance.
+- This means the app works both for local development and production with Atlas.
+
+7. Environment variables
+- `backend/.env.example` includes:
+  - `MONGODB_URL`: Atlas or local MongoDB connection string.
+  - `JWT_SECRET`: secret used to sign JWT tokens.
+  - `GOOGLE_CLIENT_ID`: Google OAuth client ID for Google Sign-In.
+  - `NODE_ENV`: set to `production` when deploying publicly.
+  - `PORT`: the backend port.
+
+8. Why each dependency is used
+- `bcryptjs` - hashes passwords securely before saving them.
+- `cors` - allows frontend requests to send cookies across origins.
+- `dotenv` - loads environment variables from `.env`.
+- `express` - creates the backend server and routes.
+- `google-auth-library` - verifies Google ID tokens for Google login.
+- `jsonwebtoken` - creates and verifies JWT tokens.
+- `mongoose` - models and interacts with MongoDB.
+- `nodemon` (devDependency) - restarts the backend automatically during development.
+
+9. Task route details
+- `POST /api/tasks`
+  - Requires authentication.
+  - Creates a new task linked to `req.user.id`.
+
+- `GET /api/tasks`
+  - Requires authentication.
+  - Returns tasks created by the current user.
+
+- `PUT /api/tasks`
+  - Requires authentication.
+  - Toggles the `completed` state of a task.
+  - Saves `completedAt` when the task becomes complete.
+
+- `DELETE /api/tasks/:id`
+  - Requires authentication.
+  - Deletes the task by ID.
+
+10. Security and why this setup is better
+- Using secure cookies makes auth safer than storing JWTs in localStorage.
+- The backend verifies every request for protected routes.
+- Auth middleware ensures only the correct user can access their tasks.
+- Google login lets users sign in without creating a separate password.
+- Atlas readiness means the app can connect to a managed cloud database easily.
+
+This explanation covers how the backend and frontend work together, why each piece was added, and what configuration is required for local and public use.
+
+11. How this documentation was created
+- I reviewed every backend and frontend file that handles authentication, tasks, and database configuration.
+- I explained each file in plain language with its role and why it is needed.
+- I described the data flow for register, login, logout, status check, task operations, and Google login.
+- I added a separate section for security decisions, especially why cookies are used for JWT.
+- I included environment variable setup and Atlas-ready configuration so deployment is clear.
+- I listed all dependencies and why they are used.
+- I wrote this documentation as a full guide so you can read it and understand the code structure, the chosen architecture, and how the app works end to end.
