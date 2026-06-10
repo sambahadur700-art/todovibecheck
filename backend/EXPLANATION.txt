@@ -15,6 +15,8 @@ This project is a ToDo app with a backend built in Node.js and Express, and a fr
 - backend/server.js
   - Loads environment variables with `dotenv`.
   - Starts the server on `process.env.PORT` or `5000`.
+  - Supports local HTTPS by loading certificate files from `backend/certs` when they are available.
+  - Falls back to HTTP when cert files are missing and warns the developer to generate them with `npm run gen-cert`.
 
 - backend/config/db.js
   - Connects to MongoDB through `process.env.MONGODB_URL`.

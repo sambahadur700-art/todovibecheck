@@ -54,6 +54,18 @@ function formatTime(dateString) {
   });
 }
 
+function isTaskDeletable(dateString) {
+  if (!dateString) return false;
+  const taskDate = new Date(dateString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const compareDate = new Date(taskDate);
+  compareDate.setHours(0, 0, 0, 0);
+  const diffMs = today - compareDate;
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays <= 2;
+}
+
 function aggregateByDate(tasks) {
   const grouped = {};
 
@@ -155,9 +167,11 @@ function renderDailyTable() {
                 </span>
               </td>
               <td>
-                <button class="action-btn" style="background:#fee2e2; color:#ef4444; padding:4px 8px;" onclick="deleteDailyTask('${task._id}')">
-                  Delete
-                </button>
+                ${
+                  isTaskDeletable(task.createdAt)
+                    ? `<button class="action-btn" style="background:#fee2e2; color:#ef4444; padding:4px 8px;" onclick="deleteDailyTask('${task._id}')">Delete</button>`
+                    : `<span style="color:#f8f8f2; opacity:0.75; font-size:0.9rem;">Locked</span>`
+                }
               </td>
             </tr>
           `,
